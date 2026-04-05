@@ -1,36 +1,32 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Urgentic
 
-## Getting Started
+**Urgentic** is a mobile-first web app for discreet safety communication. If someone feels **unsafe** or is stuck in an **awkward** situation, they tap one action on their phone. The app then calls their **trusted contacts** with an AI voice agent ([Vapi](https://vapi.ai/)) that explains what’s going on, offers response options, and asks where the contact is. The person who sent the alert sees **live call status** for each contact, their **spoken choices**, and **location hints** when the call captures them.
 
-First, run the development server:
+When every call in a session has finished, Urgentic can show short **“what to do next”** guidance (OpenAI-backed with a simple fallback if no key is set). Optionally, with **Mapbox** configured, it suggests a **nearby public place** (libraries, stations, etc.), shows a **static map**, and links to **walking directions**—clearly framed as approximate, not a substitute for **911**.
+
+Contacts live in **Supabase**; which contacts are enabled on a device is also remembered in **localStorage**. Reporter **GPS** is turned into a readable address when possible via **OpenStreetMap Nominatim**; without GPS, the flow still works with limited location context.
+
+## Tech stack
+
+**Next.js 14** (App Router), **React**, **TypeScript**, **Tailwind CSS**, **Supabase**, **Vapi** (voice pipeline; **ElevenLabs** is often used for TTS via the Vapi dashboard), optional **OpenAI** for session guidance, optional **Mapbox** for places and map images.
+
+## Running locally
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+You’ll need a **Supabase** project and **Vapi** assistants/phone numbers wired to this app. Copy environment variables into **`.env.local`** (see your team’s secrets doc or deployment config)—including **`APP_URL`** reachable from the internet for Vapi webhooks (e.g. ngrok in development).
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+npm run build   # production build
+npm run start   # run production server
+npm run lint    # eslint
+```
 
-## Learn More
+## License
 
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Private / team project unless noted otherwise.
