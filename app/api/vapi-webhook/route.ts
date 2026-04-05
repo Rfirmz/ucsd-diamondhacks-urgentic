@@ -140,6 +140,40 @@ function buildTranscriptFromArtifact(artifact: ArtifactPayload | undefined): str
   return "";
 }
 
+/** Vapi `endedReason` when the callee never really engaged (hang up, no pickup, etc.). */
+function callEndedWithoutUsefulHuman(endedReason: string): boolean {
+  const r = endedReason.trim().toLowerCase();
+  if (!r) return false;
+  // Avoid bare `hang` — it matches inside unrelated words like "change".
+  return /customer-did-not-answer|no-answer|no_answer|voicemail|busy|\bfailed\b|timeout|silence|hangup|hang-up|hung-up|hung\s+up|disconnec|customer-ended|user-ended|ended-by-user|declin|unreachable|no\.?\s*route|\bsip\b|\bcancel\b|abandon|rejected|not.picked|machine|fax|max-duration|exceeded-max|call\.rejected/i.test(
+    r
+  );
+}
+
+/**
+ * True if artifact looks like the human on the phone said something (not just the assistant monologue).
+ * Without this, structured outputs can echo a menu option even when nobody answered.
+ */
+function hasApparentUserSpeech(artifact: ArtifactPayload | undefined, rawTranscript: string): boolean {
+  if (artifact?.messages && artifact.messages.length > 0) {
+    const userRole = /^(user|customer|caller|human|member|contact|participant)$/i;
+    for (const m of artifact.messages) {
+      const role = (m.role ?? "").trim();
+      const text = (m.message ?? m.content ?? "").trim();
+      if (text.length >= 2 && userRole.test(role)) return true;
+    }
+    return false;
+  }
+  const flat =
+    (typeof artifact?.transcript === "string" && artifact.transcript.trim()) || rawTranscript.trim();
+  if (!flat) return false;
+  if (/\b(user|customer|caller)\s*:/i.test(flat)) return true;
+  const onlyAssistant =
+    /\b(assistant|bot|system)\s*:/i.test(flat) && !/\b(user|customer|caller)\s*:/i.test(flat);
+  if (onlyAssistant) return false;
+  return flat.length >= 40;
+}
+
 function resolveAlertId(message: WebhookMessage): string | undefined {
   const m = message.call?.metadata;
   if (!m) return undefined;
@@ -200,33 +234,68 @@ async function handleEndOfCallReport(message: WebhookMessage) {
   const { location: structuredLocation, choice } = extractStructuredFields(structuredMap, alertType);
 
   const endedReason = typeof message.endedReason === "string" ? message.endedReason : "";
-  const failHint = /customer-did-not-answer|no-answer|voicemail|busy|failed|timeout|silence/i.test(
-    endedReason
-  );
+  const badEnd = callEndedWithoutUsefulHuman(endedReason);
 
   const rawTranscript = buildTranscriptFromArtifact(message.artifact);
+  const userSpoke = hasApparentUserSpeech(message.artifact, rawTranscript);
+  /** If the call didn't obviously fail and there's enough dialog, trust structured choice even without role tags. */
+  const substantiveDialog = rawTranscript.trim().length >= 22;
 
   let contact_response: string;
-  const contact_location: string | null = structuredLocation;
+  let contact_location: string | null = structuredLocation;
   let status: "responded" | "failed";
 
-  if (choice) {
-    contact_response = choice;
+  const noResponseCopy = "No response";
+
+  /** Trust Vapi structured choice when there's dialog proof OR the endedReason isn't a hard failure. */
+  const acceptChoice =
+    Boolean(choice) && (userSpoke || substantiveDialog || !badEnd);
+
+  const { data: existing } = await supabase
+    .from("alerts")
+    .select("status, contact_response")
+    .eq("id", alertId)
+    .single();
+
+  if (acceptChoice) {
+    contact_response = choice as string;
     status = "responded";
-  } else if (rawTranscript) {
+  } else if (badEnd && !userSpoke) {
+    contact_response = noResponseCopy;
+    status = "failed";
+  } else if (choice) {
+    contact_response = noResponseCopy;
+    status = "failed";
+  } else if (rawTranscript && userSpoke) {
     let text = rawTranscript;
     if (text.length > TRANSCRIPT_MAX) {
       text = `${text.slice(0, TRANSCRIPT_MAX)}\n…(truncated)`;
     }
     contact_response = text;
     status = "responded";
-  } else if (failHint) {
-    contact_response = "Call did not complete (no answer, busy, voicemail, or similar).";
+  } else if (rawTranscript) {
+    contact_response = noResponseCopy;
+    status = "failed";
+  } else if (badEnd) {
+    contact_response = noResponseCopy;
     status = "failed";
   } else {
-    contact_response =
-      "Call ended before structured output was available. If this persists, check Vapi Artifact Plan / structured output attachment.";
-    status = "responded";
+    contact_response = noResponseCopy;
+    status = "failed";
+  }
+
+  if (status === "failed" && contact_response === noResponseCopy) {
+    contact_location = null;
+  }
+
+  const alreadyGood =
+    existing?.status === "responded" &&
+    typeof existing.contact_response === "string" &&
+    existing.contact_response.trim() !== "" &&
+    existing.contact_response !== noResponseCopy;
+
+  if (alreadyGood && status === "failed") {
+    return NextResponse.json({ ok: true });
   }
 
   await supabase

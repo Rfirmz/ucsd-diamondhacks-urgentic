@@ -1,14 +1,19 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { setStoredContactId } from "@/lib/contact-storage";
+import { addStoredContactId } from "@/lib/contact-storage";
 
-export default function SetupPage() {
+function SetupForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const rawNext = searchParams.get("next");
+  const nextPath =
+    rawNext && rawNext.startsWith("/") && !rawNext.startsWith("//") ? rawNext : "/";
+
   const [userName, setUserName] = useState("");
   const [contactName, setContactName] = useState("");
   const [contactPhone, setContactPhone] = useState("");
@@ -32,8 +37,8 @@ export default function SetupPage() {
         return;
       }
       if (data.id) {
-        setStoredContactId(data.id);
-        router.push("/");
+        addStoredContactId(data.id);
+        router.push(nextPath);
         return;
       }
       setError("No contact id returned");
@@ -44,13 +49,10 @@ export default function SetupPage() {
   }
 
   return (
-    <div className="mx-auto min-h-dvh max-w-md bg-[#0c1222] px-5 py-12">
-      <h1 className="mb-2 text-2xl font-semibold text-slate-100">Setup</h1>
-      <p className="mb-8 text-sm text-slate-400">
-        One trusted contact for alerts. You can change this anytime from the home screen.
-      </p>
+    <div className="mx-auto min-h-dvh max-w-md px-5 py-12">
+      <h1 className="mb-8 text-2xl font-semibold tracking-tight text-white">Add contact</h1>
 
-      <form onSubmit={onSubmit} className="flex flex-col gap-5">
+      <form onSubmit={onSubmit} className="urgentic-glass flex flex-col gap-5 p-6">
         <div className="space-y-2">
           <Label htmlFor="userName" className="text-slate-200">
             Your name
@@ -104,11 +106,25 @@ export default function SetupPage() {
         <Button
           type="submit"
           disabled={saving}
-          className="mt-2 h-12 rounded-xl bg-sky-600 text-base font-medium text-white hover:bg-sky-500"
+          className="urgentic-glow-sky mt-1 h-12 rounded-2xl border border-cyan-400/20 bg-gradient-to-r from-sky-500 to-cyan-400 font-semibold text-white hover:brightness-110"
         >
-          {saving ? "Saving…" : "Save & continue"}
+          {saving ? "Saving…" : "Save"}
         </Button>
       </form>
     </div>
+  );
+}
+
+export default function SetupPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex min-h-dvh items-center justify-center text-slate-500">
+          Loading…
+        </div>
+      }
+    >
+      <SetupForm />
+    </Suspense>
   );
 }

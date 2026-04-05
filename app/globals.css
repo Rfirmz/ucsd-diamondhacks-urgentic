@@ -8,6 +8,93 @@
   .text-balance {
     text-wrap: balance;
   }
+
+  /* Urgentic: mobile-first shell — safe areas + stable viewport height */
+  .urgentic-shell {
+    box-sizing: border-box;
+    min-height: 100svh;
+    min-height: 100dvh;
+    background-color: #1a2332;
+    background-image:
+      radial-gradient(ellipse 100% 70% at 50% -20%, rgba(56, 189, 248, 0.045), transparent 55%),
+      radial-gradient(ellipse 50% 40% at 100% 0%, rgba(34, 211, 238, 0.03), transparent);
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    padding-left: env(safe-area-inset-left, 0px);
+    padding-right: env(safe-area-inset-right, 0px);
+  }
+
+  .urgentic-glass {
+    border-radius: 1.35rem;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgba(255, 255, 255, 0.04);
+    box-shadow: 0 8px 36px rgba(0, 0, 0, 0.38);
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
+  }
+
+  .urgentic-glow-sky {
+    box-shadow:
+      0 6px 20px rgba(0, 0, 0, 0.22),
+      0 0 24px -12px rgba(56, 189, 248, 0.2);
+  }
+
+  .urgentic-glow-red {
+    box-shadow:
+      0 6px 22px rgba(0, 0, 0, 0.28),
+      0 0 28px -14px rgba(248, 113, 113, 0.22);
+  }
+
+  .urgentic-glow-amber {
+    box-shadow:
+      0 6px 22px rgba(0, 0, 0, 0.28),
+      0 0 28px -14px rgba(251, 191, 36, 0.2);
+  }
+
+  /* Stack: ambient wash + blurred PNGs (screen) + sharp mark (multiply) */
+  .urgentic-logo-slot {
+    isolation: isolate;
+  }
+
+  .urgentic-logo-ambient {
+    position: absolute;
+    left: 50%;
+    top: 48%;
+    z-index: 0;
+    width: 118%;
+    height: 100%;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+    background: radial-gradient(
+      ellipse 70% 65% at 50% 45%,
+      rgba(255, 255, 255, 0.18) 0%,
+      rgba(255, 255, 255, 0.06) 42%,
+      transparent 68%
+    );
+    filter: blur(5px);
+  }
+
+  .urgentic-logo-halo-tight {
+    z-index: 1;
+    filter: blur(16px) brightness(1.12);
+    opacity: 0.38;
+    mix-blend-mode: screen;
+    transform: scale(1.1);
+  }
+
+  .urgentic-logo-halo-wide {
+    z-index: 1;
+    filter: blur(36px) brightness(1.08);
+    opacity: 0.28;
+    mix-blend-mode: screen;
+    transform: scale(1.28);
+  }
+
+  .urgentic-logo-mark {
+    z-index: 2;
+    mix-blend-mode: multiply;
+    filter: contrast(1.08);
+  }
 }
 
 @layer base {
@@ -90,5 +177,7 @@
   }
   html {
     @apply font-sans;
+    /* Mobile web: subtle tap feedback, no desktop-style text selection on UI chrome */
+    -webkit-tap-highlight-color: rgba(255, 255, 255, 0.07);
   }
 }

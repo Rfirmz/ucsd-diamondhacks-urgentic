@@ -1,44 +1,81 @@
 import { NextResponse } from "next/server";
+import { randomUUID } from "crypto";
 import { createServiceRoleClient } from "@/lib/supabase";
+import {
+  buildVapiPhonePayload,
+  startVapiPhoneCall,
+  type AlertType,
+  type ContactForCall,
+} from "@/lib/vapi-outbound";
+
+const MAX_CONTACTS_PER_ALERT = 8;
 
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { contactId, alertType, location } = body as {
+    const { contactId, contactIds, alertType, location } = body as {
       contactId?: string;
+      contactIds?: string[];
       alertType?: string;
       location?: string;
     };
 
-    if (!contactId || !alertType || (alertType !== "unsafe" && alertType !== "awkward")) {
-      return NextResponse.json({ error: "Invalid contactId or alertType" }, { status: 400 });
+    if (!alertType || (alertType !== "unsafe" && alertType !== "awkward")) {
+      return NextResponse.json({ error: "Invalid alertType" }, { status: 400 });
     }
 
-    const loc = typeof location === "string" && location.trim() ? location.trim() : "Location unavailable";
+    const typedAlertType = alertType as AlertType;
+    const loc =
+      typeof location === "string" && location.trim() ? location.trim() : "Location unavailable";
+
+    const idsRaw = Array.isArray(contactIds)
+      ? contactIds
+      : contactId
+        ? [contactId]
+        : [];
+    const uniqueIds = Array.from(new Set(idsRaw.map((x) => String(x).trim()).filter(Boolean)));
+
+    if (uniqueIds.length === 0) {
+      return NextResponse.json({ error: "Provide contactId or contactIds" }, { status: 400 });
+    }
+    if (uniqueIds.length > MAX_CONTACTS_PER_ALERT) {
+      return NextResponse.json(
+        { error: `At most ${MAX_CONTACTS_PER_ALERT} contacts per alert` },
+        { status: 400 }
+      );
+    }
 
     const supabase = createServiceRoleClient();
-    const { data: contact, error: contactError } = await supabase
+    const { data: contacts, error: contactsError } = await supabase
       .from("contacts")
       .select("*")
-      .eq("id", contactId)
-      .single();
+      .in("id", uniqueIds);
 
-    if (contactError || !contact) {
-      return NextResponse.json({ error: "Contact not found" }, { status: 404 });
+    if (contactsError || !contacts?.length) {
+      return NextResponse.json({ error: "No contacts found" }, { status: 404 });
     }
 
-    const { data: alert, error: alertError } = await supabase
-      .from("alerts")
-      .insert({
-        contact_id: contactId,
-        alert_type: alertType,
-        location: loc,
-        status: "calling",
-      })
-      .select()
-      .single();
+    const contactById = new Map(contacts.map((c) => [c.id, c as ContactForCall]));
+    for (const id of uniqueIds) {
+      if (!contactById.has(id)) {
+        return NextResponse.json({ error: `Contact not found: ${id}` }, { status: 404 });
+      }
+    }
 
-    if (alertError || !alert) {
+    const isBatch = uniqueIds.length > 1 || Array.isArray(contactIds);
+    const sessionId = isBatch ? randomUUID() : null;
+
+    const rows = uniqueIds.map((cid) => ({
+      contact_id: cid,
+      alert_type: typedAlertType,
+      location: loc,
+      status: "calling" as const,
+      ...(sessionId ? { session_id: sessionId } : {}),
+    }));
+
+    const { data: alerts, error: alertError } = await supabase.from("alerts").insert(rows).select();
+
+    if (alertError || !alerts?.length) {
       console.error("alert insert", alertError);
       return NextResponse.json({ error: "Failed to create alert" }, { status: 500 });
     }
@@ -46,94 +83,97 @@ export async function POST(req: Request) {
     const apiKey = process.env.VAPI_API_KEY;
     const unsafePhoneId = process.env.VAPI_UNSAFE_PHONE_NUMBER_ID;
     const awkwardPhoneId = process.env.VAPI_AWKWARD_PHONE_NUMBER_ID;
-    const phoneNumberId = alertType === "unsafe" ? unsafePhoneId : awkwardPhoneId;
-    const unsafeId = process.env.VAPI_UNSAFE_ASSISTANT_ID;
-    const awkwardId = process.env.VAPI_AWKWARD_ASSISTANT_ID;
+    const unsafeAssistantId = process.env.VAPI_UNSAFE_ASSISTANT_ID;
+    const awkwardAssistantId = process.env.VAPI_AWKWARD_ASSISTANT_ID;
     const appUrl = process.env.APP_URL;
 
-    if (!apiKey || !unsafePhoneId || !awkwardPhoneId || !unsafeId || !awkwardId || !appUrl) {
+    if (
+      !apiKey ||
+      !unsafePhoneId ||
+      !awkwardPhoneId ||
+      !unsafeAssistantId ||
+      !awkwardAssistantId ||
+      !appUrl
+    ) {
+      const now = new Date().toISOString();
       await supabase
         .from("alerts")
-        .update({ status: "failed", updated_at: new Date().toISOString() })
-        .eq("id", alert.id);
+        .update({ status: "failed", updated_at: now })
+        .in(
+          "id",
+          alerts.map((a) => a.id)
+        );
       return NextResponse.json({ error: "Server missing VAPI or APP_URL configuration" }, { status: 500 });
     }
 
-    const assistantId = alertType === "unsafe" ? unsafeId : awkwardId;
-    const firstMessage =
-      alertType === "unsafe"
-        ? `Hey, I'm calling from Urgentic with an urgent message for ${contact.contact_name}. ${contact.user_name} is feeling unsafe right now and needs your help. Their approximate location is ${loc}. Here's what you can do — you can say I'm coming now, meet at a public place, call security, or stay where you are. What would you like to do?`
-        : `Hey ${contact.contact_name}, I'm calling from Urgentic. Nothing dangerous, but ${contact.user_name} is in an uncomfortable situation and could use a hand getting out of it. Here's what you can do — you can say call them with an excuse, text them a fake emergency, come meet them, or stay put I'll figure something out. What works best for you?`;
+    const resolvedPhoneId = typedAlertType === "unsafe" ? unsafePhoneId : awkwardPhoneId;
+    const resolvedAssistantId = typedAlertType === "unsafe" ? unsafeAssistantId : awkwardAssistantId;
 
-    const systemContent =
-      alertType === "unsafe"
-        ? `You are a voice agent for Urgentic, an emergency safety app. You're calling ${contact.contact_name} because ${contact.user_name} has triggered an urgent safety alert. This is serious. Keep your tone calm but urgent. Speak like a real person delivering important news, not like a robot reading a script. Use short, natural sentences. Here's what you need to do: Tell them ${contact.user_name} feels unsafe and needs help right now. Their location is ${loc}. Give them four options: "I'm coming now," "Meet at a public place," "Call security," or "Stay where you are." Once they pick one, ask where they currently are so you can pass that info along. Confirm their choice and location back to them. Thank them and hang up. If they're confused, just calmly repeat the four options. If their answer is close to one of the options but not exact, go with the closest match and confirm it. If they ask questions about what happened, just say you don't have more details and ask them to pick an option. Don't explain how the app works. Don't make small talk. Keep the whole call under a minute.`
-        : `You are a voice agent for Urgentic, a personal safety app. You're calling ${contact.contact_name} because their friend ${contact.user_name} has used Urgentic to signal that they are in an awkward or uncomfortable situation and want a way out. This is NOT a dangerous emergency. Keep your tone friendly, casual, and lighthearted, like a helpful friend relaying a message. Here's what you need to do: Let them know ${contact.user_name} could use some help getting out of an uncomfortable situation. Give them four options: "Call them with an excuse," "Text them a fake emergency," "Come meet them," or "Stay put, I'll figure something out." Once they pick one, ask where they currently are so you can pass that info along. Confirm their choice and location back to them. Thank them casually and end the call. If they're confused, briefly explain their friend used an app to let them know they'd like help leaving a situation, then repeat the options. If their answer is close to one of the options but not exact, go with the closest match and confirm it. Don't make it sound dramatic. Keep the call under 45 seconds.`;
-
-    const vapiResponse = await fetch("https://api.vapi.ai/call/phone", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        phoneNumberId,
-        customer: {
-          number: contact.contact_phone,
-        },
-        assistantId,
-        assistantOverrides: {
-          firstMessage,
-          // VAPI requires `provider` and `model` when overriding `model`; messages-only object returns 400.
-          model: {
-            provider: process.env.VAPI_MODEL_PROVIDER || "openai",
-            model: process.env.VAPI_MODEL_NAME || "gpt-4o",
-            messages: [
-              {
-                role: "system",
-                content: systemContent,
-              },
-            ],
-          },
-          serverUrl: `${appUrl.replace(/\/$/, "")}/api/vapi-webhook`,
-          // end-of-call-report delivers artifact.structuredOutputs (per-assistant schemas in Vapi).
-          serverMessages: ["end-of-call-report"],
-        },
-        metadata: {
+    const results = await Promise.all(
+      alerts.map(async (alert) => {
+        const contact = contactById.get(alert.contact_id as string);
+        if (!contact) {
+          return { alertId: alert.id, ok: false as const, error: "Contact missing" };
+        }
+        const payload = buildVapiPhonePayload({
           alertId: alert.id,
-          contactId: contact.id,
-          alertType,
-        },
-      }),
-    });
+          contact,
+          alertType: typedAlertType,
+          location: loc,
+          phoneNumberId: resolvedPhoneId,
+          assistantId: resolvedAssistantId,
+          appUrl,
+        });
+        const { ok, vapiData } = await startVapiPhoneCall(apiKey, payload);
+        if (!ok) {
+          console.error("VAPI error", vapiData);
+          await supabase
+            .from("alerts")
+            .update({ status: "failed", updated_at: new Date().toISOString() })
+            .eq("id", alert.id);
+          return {
+            alertId: alert.id,
+            ok: false as const,
+            error: vapiData.message || "VAPI call failed",
+          };
+        }
+        const callId = vapiData.id ?? null;
+        await supabase
+          .from("alerts")
+          .update({
+            vapi_call_id: callId,
+            status: "calling",
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", alert.id);
+        return { alertId: alert.id, callId, ok: true as const };
+      })
+    );
 
-    const vapiData = (await vapiResponse.json().catch(() => ({}))) as { id?: string; message?: string };
+    const single = results[0];
 
-    if (!vapiResponse.ok) {
-      console.error("VAPI error", vapiResponse.status, vapiData);
-      await supabase
-        .from("alerts")
-        .update({ status: "failed", updated_at: new Date().toISOString() })
-        .eq("id", alert.id);
+    if (sessionId) {
+      return NextResponse.json({
+        sessionId,
+        alerts: results,
+        status: "calling" as const,
+      });
+    }
+
+    if (!single) {
+      return NextResponse.json({ error: "No alerts created" }, { status: 500 });
+    }
+
+    if (!single.ok) {
       return NextResponse.json(
-        { error: vapiData.message || "VAPI call failed", alertId: alert.id },
+        { error: "error" in single ? single.error : "VAPI call failed", alertId: single.alertId },
         { status: 502 }
       );
     }
 
-    const callId = vapiData.id ?? null;
-    await supabase
-      .from("alerts")
-      .update({
-        vapi_call_id: callId,
-        status: "calling",
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", alert.id);
-
     return NextResponse.json({
-      alertId: alert.id,
-      callId,
+      alertId: single.alertId,
+      callId: "callId" in single ? single.callId : null,
       status: "calling" as const,
     });
   } catch (e) {
