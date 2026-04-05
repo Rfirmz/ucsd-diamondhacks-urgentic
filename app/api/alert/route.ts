@@ -71,12 +71,20 @@ export async function POST(req: Request) {
     const isBatch = uniqueIds.length > 1 || Array.isArray(contactIds);
     const sessionId = isBatch ? randomUUID() : null;
 
+    const repLat =
+      typeof latitude === "number" && Number.isFinite(latitude) ? latitude : null;
+    const repLng =
+      typeof longitude === "number" && Number.isFinite(longitude) ? longitude : null;
+
     const rows = uniqueIds.map((cid) => ({
       contact_id: cid,
       alert_type: typedAlertType,
       location: loc,
       status: "calling" as const,
       ...(sessionId ? { session_id: sessionId } : {}),
+      ...(repLat !== null && repLng !== null
+        ? { reporter_latitude: repLat, reporter_longitude: repLng }
+        : {}),
     }));
 
     const { data: alerts, error: alertError } = await supabase.from("alerts").insert(rows).select();

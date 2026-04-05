@@ -2,6 +2,13 @@ import { NextResponse } from "next/server";
 import { createServiceRoleClient } from "@/lib/supabase";
 import { getNextSteps } from "@/lib/next-steps";
 import {
+  findNearestSafePlaceMapbox,
+  mapboxForwardGeocode,
+  nearestSafePlaceToJson,
+  parseNearestSafePlaceJson,
+  type NearestSafePlace,
+} from "@/lib/mapbox-safe-place";
+import {
   guidanceToJson,
   openAiSessionGuidance,
   parseSessionGuidanceJson,
@@ -30,6 +37,9 @@ type Row = {
   contact_location: string | null;
   created_at: string;
   session_ai_summary: string | null;
+  reporter_latitude: number | null;
+  reporter_longitude: number | null;
+  session_nearest_place_json: string | null;
   contacts: {
     contact_name: string;
     contact_phone: string;
@@ -81,6 +91,60 @@ async function ensureSessionGuidance(
   return guidance;
 }
 
+async function resolveReporterCoords(
+  mapboxToken: string,
+  row: Row
+): Promise<{ lng: number; lat: number } | null> {
+  const lat = row.reporter_latitude;
+  const lng = row.reporter_longitude;
+  if (
+    typeof lat === "number" &&
+    typeof lng === "number" &&
+    Number.isFinite(lat) &&
+    Number.isFinite(lng)
+  ) {
+    return { lng, lat };
+  }
+  const loc = row.location?.trim();
+  if (!loc || /^location unavailable$/i.test(loc)) return null;
+  return mapboxForwardGeocode(mapboxToken, loc);
+}
+
+async function ensureNearestSafePlace(
+  supabase: ReturnType<typeof createServiceRoleClient>,
+  rows: Row[]
+): Promise<NearestSafePlace | null> {
+  if (!allAlertsTerminal(rows)) return null;
+
+  const mapboxToken = process.env.MAPBOX_ACCESS_TOKEN?.trim();
+  if (!mapboxToken) return null;
+
+  const cachedRaw = rows.find((r) => r.session_nearest_place_json?.trim())?.session_nearest_place_json;
+  if (cachedRaw) {
+    const parsed = parseNearestSafePlaceJson(cachedRaw);
+    if (parsed) return parsed;
+  }
+
+  const first = rows[0];
+  const coords = await resolveReporterCoords(mapboxToken, first);
+  if (!coords) return null;
+
+  try {
+    const place = await findNearestSafePlaceMapbox(mapboxToken, coords.lng, coords.lat);
+    if (!place) return null;
+
+    const json = nearestSafePlaceToJson(place);
+    const ids = rows.map((r) => r.id);
+    const { error } = await supabase.from("alerts").update({ session_nearest_place_json: json }).in("id", ids);
+    if (error) console.error("session_nearest_place save", error);
+
+    return place;
+  } catch (e) {
+    console.error("mapbox nearest place", e);
+    return null;
+  }
+}
+
 export async function GET(_req: Request, { params }: { params: { sessionId: string } }) {
   const { sessionId } = params;
   if (!sessionId) {
@@ -91,7 +155,7 @@ export async function GET(_req: Request, { params }: { params: { sessionId: stri
   const { data, error } = await supabase
     .from("alerts")
     .select(
-      "id, status, alert_type, location, contact_response, contact_location, created_at, session_ai_summary, contacts (contact_name, contact_phone)"
+      "id, status, alert_type, location, contact_response, contact_location, created_at, session_ai_summary, reporter_latitude, reporter_longitude, session_nearest_place_json, contacts (contact_name, contact_phone)"
     )
     .eq("session_id", sessionId)
     .order("created_at", { ascending: true });
@@ -122,11 +186,19 @@ export async function GET(_req: Request, { params }: { params: { sessionId: stri
     }
   }
 
+  let nearestSafePlace: NearestSafePlace | null = null;
+  try {
+    nearestSafePlace = await ensureNearestSafePlace(supabase, rows);
+  } catch (e) {
+    console.error("nearest safe place", e);
+  }
+
   return noStoreJson({
     sessionId,
     alertType: first.alert_type,
     location: first.location,
     aiGuidance,
+    nearestSafePlace,
     alerts: rows.map((row) => {
       const contactName = row.contacts?.contact_name ?? "Contact";
       return {

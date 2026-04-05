@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 
@@ -20,18 +21,39 @@ type SessionGuidance = {
   bullets: string[];
 };
 
+type NearestSafePlace = {
+  name: string;
+  fullAddress: string | null;
+  categoryTried: string;
+  distanceMeters: number;
+  originLng: number;
+  originLat: number;
+  destinationLng: number;
+  destinationLat: number;
+  directionsUrl: string;
+};
+
 type SessionPayload = {
   sessionId: string;
   alertType: string;
   location: string | null;
   aiGuidance: SessionGuidance | null;
+  nearestSafePlace: NearestSafePlace | null;
   alerts: SessionAlert[];
 };
+
+function markersShowYouAndPlace(p: NearestSafePlace): boolean {
+  return (
+    Math.abs(p.originLng - p.destinationLng) > 1e-6 ||
+    Math.abs(p.originLat - p.destinationLat) > 1e-6
+  );
+}
 
 export function AlertSessionStatus({ sessionId }: { sessionId: string }) {
   const router = useRouter();
   const [data, setData] = useState<SessionPayload | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [mapBroken, setMapBroken] = useState(false);
 
   const fetchSession = useCallback(async () => {
     try {
@@ -46,6 +68,7 @@ export function AlertSessionStatus({ sessionId }: { sessionId: string }) {
         alertType: json.alertType,
         location: json.location ?? null,
         aiGuidance: json.aiGuidance ?? null,
+        nearestSafePlace: json.nearestSafePlace ?? null,
         alerts: json.alerts ?? [],
       });
       setLoadError(null);
@@ -57,6 +80,10 @@ export function AlertSessionStatus({ sessionId }: { sessionId: string }) {
   useEffect(() => {
     fetchSession();
   }, [fetchSession]);
+
+  useEffect(() => {
+    setMapBroken(false);
+  }, [sessionId, data?.nearestSafePlace?.destinationLng, data?.nearestSafePlace?.destinationLat]);
 
   const allTerminal =
     data?.alerts.length &&
@@ -160,6 +187,80 @@ export function AlertSessionStatus({ sessionId }: { sessionId: string }) {
         ))}
       </ul>
 
+      {allTerminal && data.aiGuidance ? (
+        <div className="mt-8 rounded-2xl border border-sky-500/25 bg-sky-500/10 p-4">
+          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-sky-200/90">
+            What to do now
+          </h2>
+          <p className="mb-3 text-base font-medium text-white">{data.aiGuidance.title}</p>
+          <ul className="list-inside list-disc space-y-2 text-sm leading-relaxed text-slate-200">
+            {data.aiGuidance.bullets.map((b, i) => (
+              <li key={i}>{b}</li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
+      {allTerminal && data.nearestSafePlace ? (
+        <div className="mt-6 rounded-2xl border border-emerald-500/20 bg-emerald-950/20 p-4">
+          <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-emerald-200/90">
+            Nearest public place
+          </h2>
+          <p className="text-base font-medium text-white">{data.nearestSafePlace.name}</p>
+          {data.nearestSafePlace.fullAddress ? (
+            <p className="mt-1 text-sm text-slate-300">{data.nearestSafePlace.fullAddress}</p>
+          ) : null}
+          <p className="mt-2 text-sm text-slate-400">
+            About {Math.round(data.nearestSafePlace.distanceMeters)} m away ·{" "}
+            {data.nearestSafePlace.categoryTried.replace(/_/g, " ")}
+          </p>
+
+          {!mapBroken ? (
+            <>
+              <div className="mt-4 overflow-hidden rounded-xl border border-white/10 bg-slate-950/50 shadow-inner">
+                <Image
+                  src={`/api/map/session/${encodeURIComponent(sessionId)}`}
+                  alt={`Map near ${data.nearestSafePlace.name}`}
+                  width={600}
+                  height={288}
+                  className="h-auto w-full object-cover"
+                  loading="lazy"
+                  unoptimized
+                  onError={() => setMapBroken(true)}
+                />
+              </div>
+              {markersShowYouAndPlace(data.nearestSafePlace) ? (
+                <p className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-slate-500">
+                  <span className="inline-flex items-center gap-1.5">
+                    <span className="size-2 rounded-full bg-emerald-400" aria-hidden />
+                    Your search area
+                  </span>
+                  <span className="inline-flex items-center gap-1.5">
+                    <span className="size-2 rounded-full bg-cyan-400" aria-hidden />
+                    Suggested place
+                  </span>
+                </p>
+              ) : null}
+            </>
+          ) : (
+            <p className="mt-3 text-xs text-slate-500">Map preview unavailable.</p>
+          )}
+
+          <p className="mt-3 text-xs leading-relaxed text-slate-500">
+            Suggestions are approximate. Verify hours and safety before you go. Not a substitute for
+            911.
+          </p>
+          <a
+            href={data.nearestSafePlace.directionsUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mt-4 inline-flex h-11 w-full items-center justify-center rounded-xl border border-emerald-400/30 bg-emerald-500/15 text-sm font-semibold text-emerald-100 transition hover:bg-emerald-500/25"
+          >
+            Walking directions
+          </a>
+        </div>
+      ) : null}
+
       {allTerminal ? (
         <Button
           type="button"
@@ -178,20 +279,6 @@ export function AlertSessionStatus({ sessionId }: { sessionId: string }) {
           Home
         </Button>
       )}
-
-      {allTerminal && data.aiGuidance ? (
-        <div className="mt-6 rounded-2xl border border-sky-500/25 bg-sky-500/10 p-4">
-          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-sky-200/90">
-            What to do now
-          </h2>
-          <p className="mb-3 text-base font-medium text-white">{data.aiGuidance.title}</p>
-          <ul className="list-inside list-disc space-y-2 text-sm leading-relaxed text-slate-200">
-            {data.aiGuidance.bullets.map((b, i) => (
-              <li key={i}>{b}</li>
-            ))}
-          </ul>
-        </div>
-      ) : null}
     </div>
   );
 }
