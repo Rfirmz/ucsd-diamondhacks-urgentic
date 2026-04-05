@@ -28,7 +28,14 @@ type ArtifactPayload = {
 type WebhookMessage = {
   type?: string;
   endedReason?: string;
-  call?: { id?: string; metadata?: Record<string, unknown> };
+  /** Vapi may include voicemail / success flags here on end-of-call-report. */
+  analysis?: Record<string, unknown>;
+  call?: {
+    id?: string;
+    metadata?: Record<string, unknown>;
+    /** Twilio-style AMD, or Vapi transport hints. */
+    answeredBy?: string;
+  };
   artifact?: ArtifactPayload;
   toolCallList?: ToolCallEntry[];
   toolWithToolCallList?: {
@@ -148,6 +155,44 @@ function callEndedWithoutUsefulHuman(endedReason: string): boolean {
   return /customer-did-not-answer|no-answer|no_answer|voicemail|busy|\bfailed\b|timeout|silence|hangup|hang-up|hung-up|hung\s+up|disconnec|customer-ended|user-ended|ended-by-user|declin|unreachable|no\.?\s*route|\bsip\b|\bcancel\b|abandon|rejected|not.picked|machine|fax|max-duration|exceeded-max|call\.rejected/i.test(
     r
   );
+}
+
+/**
+ * Voicemail / answering-machine: never treat structured outputs as a live human response.
+ * Uses endedReason, optional analysis flags, and call.answeredBy when present.
+ */
+function isVoicemailOrAnsweringMachine(message: WebhookMessage, endedReason: string): boolean {
+  const r = endedReason.trim().toLowerCase();
+  if (r) {
+    if (
+      /\bvoicemail\b|voice-mail|voice_mail|answering[-_\s]?machine|sip voicemail|amd|machine\s*detect|detected[-_\s]?machine|beep[-_\s]?detect/i.test(
+        r
+      )
+    ) {
+      return true;
+    }
+  }
+
+  const a = message.analysis;
+  if (a && typeof a === "object") {
+    const flags = [
+      a.voicemailDetected,
+      a.voicemail_detected,
+      a.isVoicemail,
+      a.is_voicemail,
+      a.reachedVoicemail,
+      a.reached_voicemail,
+    ];
+    if (flags.some((v) => v === true)) return true;
+
+    const ab = a.answeredBy ?? a.answered_by;
+    if (typeof ab === "string" && /machine|voicemail|fax|modem/i.test(ab)) return true;
+  }
+
+  const answeredBy = message.call?.answeredBy;
+  if (typeof answeredBy === "string" && /machine|voicemail|fax/i.test(answeredBy)) return true;
+
+  return false;
 }
 
 /**
@@ -284,6 +329,12 @@ async function handleEndOfCallReport(message: WebhookMessage) {
     status = "failed";
   }
 
+  if (isVoicemailOrAnsweringMachine(message, endedReason)) {
+    contact_response = noResponseCopy;
+    status = "failed";
+    contact_location = null;
+  }
+
   if (status === "failed" && contact_response === noResponseCopy) {
     contact_location = null;
   }
@@ -294,11 +345,11 @@ async function handleEndOfCallReport(message: WebhookMessage) {
     existing.contact_response.trim() !== "" &&
     existing.contact_response !== noResponseCopy;
 
-  if (alreadyGood && status === "failed") {
+  if (alreadyGood && status === "failed" && !isVoicemailOrAnsweringMachine(message, endedReason)) {
     return NextResponse.json({ ok: true });
   }
 
-  await supabase
+  const { error: reportErr } = await supabase
     .from("alerts")
     .update({
       status,
@@ -307,6 +358,11 @@ async function handleEndOfCallReport(message: WebhookMessage) {
       updated_at: new Date().toISOString(),
     })
     .eq("id", alertId);
+
+  if (reportErr) {
+    console.error("vapi-webhook end-of-call-report save", reportErr);
+    return NextResponse.json({ ok: true });
+  }
 
   return NextResponse.json({ ok: true });
 }
@@ -356,7 +412,7 @@ async function handleToolCalls(message: WebhookMessage) {
     let updated = false;
 
     if (typeof response === "string" && response.trim() && typeof contact_location === "string") {
-      await supabase
+      const { error: saveErr } = await supabase
         .from("alerts")
         .update({
           status: "responded",
@@ -365,7 +421,11 @@ async function handleToolCalls(message: WebhookMessage) {
           updated_at: new Date().toISOString(),
         })
         .eq("id", alertId);
-      updated = true;
+      if (!saveErr) {
+        updated = true;
+      } else {
+        console.error("vapi-webhook send_response save", saveErr);
+      }
     }
 
     results.push({

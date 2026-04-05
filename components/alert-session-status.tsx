@@ -15,10 +15,16 @@ type SessionAlert = {
   createdAt: string;
 };
 
+type SessionGuidance = {
+  title: string;
+  bullets: string[];
+};
+
 type SessionPayload = {
   sessionId: string;
   alertType: string;
   location: string | null;
+  aiGuidance: SessionGuidance | null;
   alerts: SessionAlert[];
 };
 
@@ -35,7 +41,13 @@ export function AlertSessionStatus({ sessionId }: { sessionId: string }) {
         setLoadError(json.error || "Not found");
         return;
       }
-      setData(json);
+      setData({
+        sessionId: json.sessionId,
+        alertType: json.alertType,
+        location: json.location ?? null,
+        aiGuidance: json.aiGuidance ?? null,
+        alerts: json.alerts ?? [],
+      });
       setLoadError(null);
     } catch {
       setLoadError("Network error");
@@ -166,6 +178,20 @@ export function AlertSessionStatus({ sessionId }: { sessionId: string }) {
           Home
         </Button>
       )}
+
+      {allTerminal && data.aiGuidance ? (
+        <div className="mt-6 rounded-2xl border border-sky-500/25 bg-sky-500/10 p-4">
+          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-sky-200/90">
+            What to do now
+          </h2>
+          <p className="mb-3 text-base font-medium text-white">{data.aiGuidance.title}</p>
+          <ul className="list-inside list-disc space-y-2 text-sm leading-relaxed text-slate-200">
+            {data.aiGuidance.bullets.map((b, i) => (
+              <li key={i}>{b}</li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
     </div>
   );
 }

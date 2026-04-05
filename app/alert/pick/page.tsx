@@ -146,10 +146,6 @@ function PickContactsInner() {
         ← Back
       </button>
       <h1 className="mb-8 text-2xl font-semibold tracking-tight text-white">Select contacts</h1>
-      <p className="mb-6 text-sm leading-relaxed text-slate-400">
-        When you tap Call, your browser may ask to share location so the voice message can describe
-        where you are. You can still send an alert if you decline.
-      </p>
 
       <div className="mb-4 flex justify-end">
         <button

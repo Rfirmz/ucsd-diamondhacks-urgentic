@@ -1,6 +1,14 @@
 import { NextResponse } from "next/server";
 import { createServiceRoleClient } from "@/lib/supabase";
 import { getNextSteps } from "@/lib/next-steps";
+import {
+  guidanceToJson,
+  openAiSessionGuidance,
+  parseSessionGuidanceJson,
+  ruleBasedSessionGuidance,
+  type ContactOutcome,
+  type SessionGuidance,
+} from "@/lib/session-ai-summary";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -21,11 +29,57 @@ type Row = {
   contact_response: string | null;
   contact_location: string | null;
   created_at: string;
+  session_ai_summary: string | null;
   contacts: {
     contact_name: string;
     contact_phone: string;
   } | null;
 };
+
+function buildContactOutcomes(rows: Row[]): ContactOutcome[] {
+  return rows.map((row) => ({
+    name: row.contacts?.contact_name ?? "Contact",
+    status: row.status,
+    response: row.contact_response,
+    theirLocation: row.contact_location,
+  }));
+}
+
+function allAlertsTerminal(rows: Row[]): boolean {
+  return rows.length > 0 && rows.every((r) => r.status === "responded" || r.status === "failed");
+}
+
+async function ensureSessionGuidance(
+  supabase: ReturnType<typeof createServiceRoleClient>,
+  rows: Row[]
+): Promise<SessionGuidance | null> {
+  if (!allAlertsTerminal(rows)) return null;
+
+  const first = rows[0];
+  const cachedRaw = rows.find((r) => r.session_ai_summary?.trim())?.session_ai_summary;
+  if (cachedRaw) {
+    const parsed = parseSessionGuidanceJson(cachedRaw);
+    if (parsed) return parsed;
+  }
+
+  const outcomes = buildContactOutcomes(rows);
+  const guidance =
+    (await openAiSessionGuidance({
+      alertType: first.alert_type,
+      reporterLocation: first.location,
+      contacts: outcomes,
+    })) ?? ruleBasedSessionGuidance(first.alert_type, first.location, outcomes);
+
+  const json = guidanceToJson(guidance);
+  const ids = rows.map((r) => r.id);
+  const { error } = await supabase.from("alerts").update({ session_ai_summary: json }).in("id", ids);
+
+  if (error) {
+    console.error("session_ai_summary save", error);
+  }
+
+  return guidance;
+}
 
 export async function GET(_req: Request, { params }: { params: { sessionId: string } }) {
   const { sessionId } = params;
@@ -37,7 +91,7 @@ export async function GET(_req: Request, { params }: { params: { sessionId: stri
   const { data, error } = await supabase
     .from("alerts")
     .select(
-      "id, status, alert_type, location, contact_response, contact_location, created_at, contacts (contact_name, contact_phone)"
+      "id, status, alert_type, location, contact_response, contact_location, created_at, session_ai_summary, contacts (contact_name, contact_phone)"
     )
     .eq("session_id", sessionId)
     .order("created_at", { ascending: true });
@@ -54,10 +108,25 @@ export async function GET(_req: Request, { params }: { params: { sessionId: stri
   const rows = data as unknown as Row[];
   const first = rows[0];
 
+  let aiGuidance: SessionGuidance | null = null;
+  try {
+    aiGuidance = await ensureSessionGuidance(supabase, rows);
+  } catch (e) {
+    console.error("session guidance", e);
+    if (allAlertsTerminal(rows)) {
+      aiGuidance = ruleBasedSessionGuidance(
+        first.alert_type,
+        first.location,
+        buildContactOutcomes(rows)
+      );
+    }
+  }
+
   return noStoreJson({
     sessionId,
     alertType: first.alert_type,
     location: first.location,
+    aiGuidance,
     alerts: rows.map((row) => {
       const contactName = row.contacts?.contact_name ?? "Contact";
       return {
