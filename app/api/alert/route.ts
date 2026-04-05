@@ -7,17 +7,20 @@ import {
   type AlertType,
   type ContactForCall,
 } from "@/lib/vapi-outbound";
+import { resolveReporterLocation } from "@/lib/reverse-geocode";
 
 const MAX_CONTACTS_PER_ALERT = 8;
 
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { contactId, contactIds, alertType, location } = body as {
+    const { contactId, contactIds, alertType, location, latitude, longitude } = body as {
       contactId?: string;
       contactIds?: string[];
       alertType?: string;
       location?: string;
+      latitude?: number;
+      longitude?: number;
     };
 
     if (!alertType || (alertType !== "unsafe" && alertType !== "awkward")) {
@@ -25,8 +28,11 @@ export async function POST(req: Request) {
     }
 
     const typedAlertType = alertType as AlertType;
-    const loc =
-      typeof location === "string" && location.trim() ? location.trim() : "Location unavailable";
+    const loc = await resolveReporterLocation({
+      latitude,
+      longitude,
+      fallbackText: typeof location === "string" ? location : undefined,
+    });
 
     const idsRaw = Array.isArray(contactIds)
       ? contactIds

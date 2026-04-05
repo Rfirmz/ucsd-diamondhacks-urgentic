@@ -77,18 +77,20 @@ function PickContactsInner() {
     setError(null);
     setStarting(true);
     try {
-      const location = await new Promise<string>((resolve) => {
+      const coords = await new Promise<{ latitude: number; longitude: number } | null>((resolve) => {
         if (typeof navigator === "undefined" || !navigator.geolocation) {
-          resolve("Location unavailable");
+          resolve(null);
           return;
         }
         navigator.geolocation.getCurrentPosition(
           (pos) => {
-            const { latitude, longitude } = pos.coords;
-            resolve(`${latitude.toFixed(4)}, ${longitude.toFixed(4)}`);
+            resolve({
+              latitude: pos.coords.latitude,
+              longitude: pos.coords.longitude,
+            });
           },
-          () => resolve("Location unavailable"),
-          { enableHighAccuracy: true, timeout: 12000, maximumAge: 60000 }
+          () => resolve(null),
+          { enableHighAccuracy: true, timeout: 15000, maximumAge: 30000 }
         );
       });
 
@@ -98,7 +100,7 @@ function PickContactsInner() {
         body: JSON.stringify({
           contactIds: Array.from(selected),
           alertType,
-          location,
+          ...(coords ? { latitude: coords.latitude, longitude: coords.longitude } : {}),
         }),
       });
       const data = (await res.json()) as {
@@ -144,6 +146,10 @@ function PickContactsInner() {
         ← Back
       </button>
       <h1 className="mb-8 text-2xl font-semibold tracking-tight text-white">Select contacts</h1>
+      <p className="mb-6 text-sm leading-relaxed text-slate-400">
+        When you tap Call, your browser may ask to share location so the voice message can describe
+        where you are. You can still send an alert if you decline.
+      </p>
 
       <div className="mb-4 flex justify-end">
         <button
