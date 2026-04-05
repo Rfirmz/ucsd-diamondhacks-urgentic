@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useLayoutEffect, useEffect, useState } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { Settings } from "lucide-react";
@@ -12,7 +12,7 @@ export function HomeScreen() {
   const router = useRouter();
   const [ready, setReady] = useState(false);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (getStoredContactIds().length === 0) {
       router.replace("/setup");
       return;
@@ -20,16 +20,19 @@ export function HomeScreen() {
     setReady(true);
   }, [router]);
 
+  useEffect(() => {
+    router.prefetch("/alert/pick?type=unsafe");
+    router.prefetch("/alert/pick?type=awkward");
+    router.prefetch("/contacts");
+    router.prefetch("/setup");
+  }, [router]);
+
   function goPick(alertType: "unsafe" | "awkward") {
     router.push(`/alert/pick?type=${alertType}`);
   }
 
   if (!ready) {
-    return (
-      <div className="flex min-h-dvh items-center justify-center text-slate-500">
-        Loading…
-      </div>
-    );
+    return <div className="min-h-dvh" aria-busy="true" />;
   }
 
   return (
@@ -37,7 +40,7 @@ export function HomeScreen() {
       <button
         type="button"
         onClick={() => router.push("/contacts")}
-        className="urgentic-glass absolute right-4 top-4 rounded-2xl p-2.5 text-slate-400 transition hover:border-white/15 hover:text-slate-200"
+        className="urgentic-glass absolute right-4 top-4 rounded-lg p-2.5 text-zinc-500 transition hover:border-white/[0.1] hover:text-zinc-300"
         aria-label="Contacts"
       >
         <Settings className="size-5" />
@@ -71,20 +74,20 @@ export function HomeScreen() {
         />
       </div>
 
-      <div className="flex flex-1 flex-col gap-5">
+      <div className="flex flex-1 flex-col gap-4">
         <Button
           type="button"
           onClick={() => goPick("unsafe")}
-          className="urgentic-glow-red h-auto min-h-[120px] rounded-2xl border-0 !bg-[#9b1c1c] py-6 text-lg font-semibold !text-white [text-shadow:0_1px_2px_rgba(0,0,0,0.35)] hover:!bg-[#b91c1c] hover:brightness-105"
+          className="urgentic-glow-red h-auto min-h-[128px] rounded-lg border border-red-600/35 !bg-[#b91c1c] py-7 text-xl font-bold tracking-tight !text-white transition-colors hover:!bg-[#dc2626] hover:!text-white"
         >
-          I Feel Unsafe
+          I feel unsafe
         </Button>
         <Button
           type="button"
           onClick={() => goPick("awkward")}
-          className="urgentic-glow-amber h-auto min-h-[120px] rounded-2xl border-0 !bg-[#d97706] py-6 text-lg font-semibold !text-white [text-shadow:0_1px_2px_rgba(0,0,0,0.35)] hover:!bg-[#f59e0b] hover:brightness-105"
+          className="urgentic-glow-amber h-auto min-h-[128px] rounded-lg border border-amber-600/35 !bg-[#d97706] py-7 text-xl font-bold tracking-tight !text-white transition-colors hover:!bg-[#f59e0b] hover:!text-white"
         >
-          Awkward Situation
+          Awkward situation
         </Button>
       </div>
     </div>

@@ -1,9 +1,14 @@
 import type { Metadata, Viewport } from "next";
-import { Inter } from "next/font/google";
+import { IBM_Plex_Serif } from "next/font/google";
 import "./globals.css";
 import { cn } from "@/lib/utils";
 
-const inter = Inter({ subsets: ["latin"], variable: "--font-sans" });
+const ibmPlexSerif = IBM_Plex_Serif({
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
+  variable: "--font-serif",
+  display: "swap",
+});
 
 export const metadata: Metadata = {
   title: "Urgentic",
@@ -29,8 +34,8 @@ export const viewport: Viewport = {
   maximumScale: 1,
   viewportFit: "cover",
   themeColor: [
-    { media: "(prefers-color-scheme: dark)", color: "#1a2332" },
-    { media: "(prefers-color-scheme: light)", color: "#1a2332" },
+    { media: "(prefers-color-scheme: dark)", color: "#14161c" },
+    { media: "(prefers-color-scheme: light)", color: "#14161c" },
   ],
 };
 
@@ -40,8 +45,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={cn("dark", inter.variable)}>
-      <body className="min-h-dvh bg-[#09090b] font-sans antialiased text-slate-100">
+    <html lang="en" className={cn("dark", ibmPlexSerif.variable)}>
+      <body className="min-h-dvh bg-[#14161c] font-serif antialiased text-zinc-100">
         <div className="urgentic-shell mx-auto min-h-dvh w-full max-w-[30rem]">{children}</div>
       </body>
     </html>

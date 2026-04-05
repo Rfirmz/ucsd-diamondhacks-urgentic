@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { Button } from "@/components/ui/button";
+import { CallingRing } from "@/components/calling-ring";
 
 type AlertPayload = {
   id: string;
@@ -41,8 +41,7 @@ export function AlertStatus({ alertId }: { alertId: string }) {
     fetchAlert();
   }, [fetchAlert]);
 
-  const terminal =
-    data?.status === "responded" || data?.status === "failed";
+  const terminal = data?.status === "responded" || data?.status === "failed";
 
   useEffect(() => {
     if (terminal) return;
@@ -52,24 +51,23 @@ export function AlertStatus({ alertId }: { alertId: string }) {
 
   if (loadError && !data) {
     return (
-      <div className="mx-auto flex min-h-dvh max-w-md flex-col items-center justify-center gap-4 px-5 text-center">
-        <p className="text-red-300">{loadError}</p>
-        <Button
-          type="button"
-          variant="outline"
-          className="urgentic-glass border-white/15 bg-transparent text-slate-200"
-          onClick={() => router.push("/")}
-        >
+      <div className="mx-auto flex min-h-dvh max-w-md flex-col items-center justify-center gap-6 px-5 text-center">
+        <p className="text-sm text-red-300/95">{loadError}</p>
+        <button type="button" className="urgentic-btn-ghost max-w-[12rem]" onClick={() => router.push("/")}>
           Home
-        </Button>
+        </button>
       </div>
     );
   }
 
   if (!data) {
     return (
-      <div className="flex min-h-dvh items-center justify-center text-slate-500">
-        Loading…
+      <div className="mx-auto min-h-dvh max-w-md px-5 py-10" aria-busy="true">
+        <header className="mb-6 border-b border-white/[0.06] pb-5">
+          <p className="urgentic-section-label mb-1">Alert</p>
+          <h1 className="text-lg font-semibold tracking-tight text-zinc-50">Status</h1>
+        </header>
+        <div className="urgentic-glass h-36 animate-pulse bg-white/[0.04]" />
       </div>
     );
   }
@@ -84,36 +82,31 @@ export function AlertStatus({ alertId }: { alertId: string }) {
     const noResponse =
       data.contactResponse === "No response" || !data.contactResponse?.trim();
     return (
-      <div className="mx-auto flex min-h-dvh max-w-md flex-col px-5 py-12">
-        <h1 className="mb-4 text-xl font-semibold text-red-300">
-          {noResponse ? "No response" : "Call failed"}
-        </h1>
-        <p className="mb-8 text-sm text-slate-500">
+      <div className="mx-auto flex min-h-dvh max-w-md flex-col px-5 py-10">
+        <header className="mb-6 border-b border-white/[0.06] pb-5">
+          <p className="urgentic-section-label mb-1">Alert</p>
+          <h1 className="text-lg font-semibold tracking-tight text-red-200/95">
+            {noResponse ? "No response" : "Call failed"}
+          </h1>
+        </header>
+        <p className="mb-10 text-sm leading-relaxed text-zinc-500">
           {noResponse ? (
-            <span className="text-red-200/80">No answer or hung up.</span>
+            <span className="text-red-200/75">No answer or the call ended.</span>
           ) : (
             <>
-              Try again or call <span className="text-slate-300">{data.contactName}</span> directly.
+              Try again or reach <span className="text-zinc-300">{data.contactName}</span> directly.
             </>
           )}
         </p>
         <div className="mt-auto flex flex-col gap-3">
           {tel ? (
-            <a
-              href={tel}
-              className="urgentic-glow-sky inline-flex h-12 items-center justify-center rounded-2xl border border-cyan-400/20 bg-gradient-to-r from-sky-500 to-cyan-400 text-base font-semibold text-white hover:brightness-110"
-            >
+            <a href={tel} className="urgentic-btn-primary text-center no-underline">
               Call {data.contactName}
             </a>
           ) : null}
-          <Button
-            type="button"
-            variant="outline"
-            className="urgentic-glass h-12 rounded-2xl border-white/10 bg-transparent text-slate-300 hover:bg-white/[0.06]"
-            onClick={() => router.push("/")}
-          >
+          <button type="button" className="urgentic-btn-ghost" onClick={() => router.push("/")}>
             Home
-          </Button>
+          </button>
         </div>
       </div>
     );
@@ -123,42 +116,40 @@ export function AlertStatus({ alertId }: { alertId: string }) {
     const steps = data.nextSteps;
 
     return (
-      <div className="mx-auto flex min-h-dvh max-w-md flex-col px-5 py-12">
-        <h1 className="mb-6 text-xl font-semibold text-sky-300">Response</h1>
+      <div className="mx-auto flex min-h-dvh max-w-md flex-col px-5 py-10">
+        <header className="mb-6 border-b border-white/[0.06] pb-5">
+          <p className="urgentic-section-label mb-1">Response</p>
+          <h1 className="text-lg font-semibold tracking-tight text-zinc-50">{data.contactName}</h1>
+        </header>
         {data.contactResponse ? (
-          <div className="urgentic-glass mb-4 border-sky-500/20 p-5">
-            <p className="text-lg leading-relaxed text-slate-100">{data.contactResponse}</p>
+          <div className="urgentic-glass mb-5 p-4">
+            <p className="text-[15px] leading-relaxed text-zinc-200">{data.contactResponse}</p>
           </div>
         ) : null}
-        {steps ? <p className="mb-4 text-sm text-slate-500">{steps}</p> : null}
+        {steps ? <p className="mb-4 text-sm leading-relaxed text-zinc-500">{steps}</p> : null}
         {data.contactLocation ? (
-          <p className="mb-8 text-xs text-slate-500">
-            <span className="text-slate-500">Location </span>
-            <span className="text-slate-300">{data.contactLocation}</span>
+          <p className="mb-10 text-xs text-zinc-600">
+            <span className="text-zinc-600">Their location · </span>
+            <span className="text-zinc-400">{data.contactLocation}</span>
           </p>
         ) : (
-          <div className="mb-8" />
+          <div className="mb-10" />
         )}
-        <Button
-          type="button"
-          className="urgentic-glow-sky mt-auto h-12 rounded-2xl border border-cyan-400/20 bg-gradient-to-r from-sky-500 to-cyan-400 font-semibold text-white hover:brightness-110"
-          onClick={() => router.push("/")}
-        >
+        <button type="button" className="urgentic-btn-primary mt-auto" onClick={() => router.push("/")}>
           Home
-        </Button>
+        </button>
       </div>
     );
   }
 
   return (
     <div className="mx-auto flex min-h-dvh max-w-md flex-col items-center justify-center px-5 py-12 text-center">
-      <div
-        className="mb-10 size-24 rounded-full bg-sky-500/15 ring-2 ring-sky-400/30 ring-offset-4 ring-offset-[#1a2332] animate-pulse-soft"
-        aria-hidden
-      />
-      <h1 className="text-xl font-medium text-white animate-pulse-soft">
-        Calling {data.contactName}…
+      <CallingRing size="lg" className="mb-8" />
+      <p className="urgentic-section-label mb-3">Calling</p>
+      <h1 className="max-w-[16rem] text-lg font-medium leading-snug tracking-tight text-zinc-100">
+        {data.contactName}
       </h1>
+      <p className="mt-3 text-sm text-zinc-500">Waiting for an answer…</p>
     </div>
   );
 }

@@ -2,7 +2,6 @@
 
 import { Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { addStoredContactId } from "@/lib/contact-storage";
@@ -49,12 +48,15 @@ function SetupForm() {
   }
 
   return (
-    <div className="mx-auto min-h-dvh max-w-md px-5 py-12">
-      <h1 className="mb-8 text-2xl font-semibold tracking-tight text-white">Add contact</h1>
+    <div className="mx-auto min-h-dvh max-w-md px-5 py-10">
+      <header className="mb-8 border-b border-white/[0.06] pb-6">
+        <p className="urgentic-section-label mb-1.5">Directory</p>
+        <h1 className="text-lg font-semibold tracking-tight text-zinc-50">Add contact</h1>
+      </header>
 
-      <form onSubmit={onSubmit} className="urgentic-glass flex flex-col gap-5 p-6">
+      <form onSubmit={onSubmit} className="urgentic-glass flex flex-col gap-5 p-5">
         <div className="space-y-2">
-          <Label htmlFor="userName" className="text-slate-200">
+          <Label htmlFor="userName" className="text-zinc-300">
             Your name
           </Label>
           <Input
@@ -63,12 +65,12 @@ function SetupForm() {
             onChange={(e) => setUserName(e.target.value)}
             required
             autoComplete="name"
-            className="border-white/10 bg-white/5 text-slate-100 placeholder:text-slate-500"
+            className="rounded-md border-white/[0.08] bg-white/[0.04] text-zinc-100 placeholder:text-zinc-600"
             placeholder="Alex"
           />
         </div>
         <div className="space-y-2">
-          <Label htmlFor="contactName" className="text-slate-200">
+          <Label htmlFor="contactName" className="text-zinc-300">
             Contact&apos;s name
           </Label>
           <Input
@@ -77,12 +79,12 @@ function SetupForm() {
             onChange={(e) => setContactName(e.target.value)}
             required
             autoComplete="off"
-            className="border-white/10 bg-white/5 text-slate-100 placeholder:text-slate-500"
+            className="rounded-md border-white/[0.08] bg-white/[0.04] text-zinc-100 placeholder:text-zinc-600"
             placeholder="Jordan"
           />
         </div>
         <div className="space-y-2">
-          <Label htmlFor="contactPhone" className="text-slate-200">
+          <Label htmlFor="contactPhone" className="text-zinc-300">
             Contact&apos;s phone (US)
           </Label>
           <Input
@@ -92,24 +94,20 @@ function SetupForm() {
             onChange={(e) => setContactPhone(e.target.value)}
             required
             autoComplete="tel"
-            className="border-white/10 bg-white/5 text-slate-100 placeholder:text-slate-500"
+            className="rounded-md border-white/[0.08] bg-white/[0.04] text-zinc-100 placeholder:text-zinc-600"
             placeholder="(555) 123-4567"
           />
         </div>
 
         {error ? (
-          <p className="text-sm text-red-300" role="alert">
+          <p className="text-sm text-red-300/95" role="alert">
             {error}
           </p>
         ) : null}
 
-        <Button
-          type="submit"
-          disabled={saving}
-          className="urgentic-glow-sky mt-1 h-12 rounded-2xl border border-cyan-400/20 bg-gradient-to-r from-sky-500 to-cyan-400 font-semibold text-white hover:brightness-110"
-        >
-          {saving ? "Saving…" : "Save"}
-        </Button>
+        <button type="submit" disabled={saving} aria-busy={saving} className="urgentic-btn-primary mt-1">
+          Save
+        </button>
       </form>
     </div>
   );
@@ -117,13 +115,7 @@ function SetupForm() {
 
 export default function SetupPage() {
   return (
-    <Suspense
-      fallback={
-        <div className="flex min-h-dvh items-center justify-center text-slate-500">
-          Loading…
-        </div>
-      }
-    >
+    <Suspense fallback={<div className="min-h-dvh" aria-hidden />}>
       <SetupForm />
     </Suspense>
   );

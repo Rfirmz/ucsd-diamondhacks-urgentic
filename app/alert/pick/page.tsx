@@ -2,7 +2,7 @@
 
 import { Suspense, useCallback, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Button } from "@/components/ui/button";
+import { CallingRing } from "@/components/calling-ring";
 import { getStoredContactIds } from "@/lib/contact-storage";
 
 type Contact = {
@@ -30,7 +30,6 @@ function PickContactsInner() {
       router.replace("/setup");
       return;
     }
-    setLoadingList(true);
     try {
       const res = await fetch(`/api/contacts?ids=${encodeURIComponent(ids.join(","))}`, {
         cache: "no-store",
@@ -128,50 +127,50 @@ function PickContactsInner() {
     return null;
   }
 
-  if (loadingList) {
-    return (
-      <div className="flex min-h-dvh items-center justify-center text-slate-500">
-        Loading…
-      </div>
-    );
-  }
-
   return (
     <div className="mx-auto min-h-dvh max-w-md px-5 py-10">
-      <button
-        type="button"
-        onClick={() => router.back()}
-        className="mb-8 text-sm text-sky-400/90 hover:text-sky-300"
-      >
+      <button type="button" onClick={() => router.back()} className="urgentic-link-back mb-8">
         ← Back
       </button>
-      <h1 className="mb-8 text-2xl font-semibold tracking-tight text-white">Select contacts</h1>
+      <header className="mb-8 border-b border-white/[0.06] pb-6">
+        <p className="urgentic-section-label mb-1.5">Recipients</p>
+        <h1 className="text-lg font-semibold tracking-tight text-zinc-50">Select contacts</h1>
+      </header>
 
       <div className="mb-4 flex justify-end">
         <button
           type="button"
           onClick={selectAll}
-          className="text-xs font-medium text-slate-500 hover:text-slate-400"
+          disabled={loadingList || contacts.length === 0}
+          className="text-xs font-medium text-zinc-600 transition-colors hover:text-zinc-400 disabled:pointer-events-none disabled:opacity-35"
         >
           Select all
         </button>
       </div>
 
-      <ul className="mb-8 flex flex-col gap-3">
-        {contacts.map((c) => {
+      <ul className="mb-8 flex flex-col gap-2.5">
+        {loadingList
+          ? [0, 1, 2].map((i) => (
+              <li key={i}>
+                <div className="urgentic-glass h-[4.25rem] animate-pulse bg-white/[0.04]" />
+              </li>
+            ))
+          : null}
+        {!loadingList &&
+          contacts.map((c) => {
           const on = selected.has(c.id);
           return (
             <li key={c.id}>
-              <label className="urgentic-glass flex cursor-pointer items-start gap-3 p-4 transition hover:border-white/[0.12] has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-sky-500/60">
+              <label className="urgentic-glass flex cursor-pointer items-start gap-3 p-3.5 transition-colors hover:border-white/[0.08] has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-zinc-500/40">
                 <input
                   type="checkbox"
                   checked={on}
                   onChange={() => toggle(c.id)}
-                  className="mt-1 size-4 rounded border-white/20 bg-white/10 text-sky-500 focus:ring-sky-500/50"
+                  className="mt-0.5 size-4 rounded border-white/15 bg-white/[0.06] text-zinc-300 accent-zinc-400 focus:ring-zinc-500/30"
                 />
                 <span className="min-w-0 flex-1">
-                  <span className="block font-medium text-slate-100">{c.contactName}</span>
-                  <span className="block text-sm text-slate-500">{c.contactPhone}</span>
+                  <span className="block font-medium text-zinc-100">{c.contactName}</span>
+                  <span className="block text-sm text-zinc-500">{c.contactPhone}</span>
                 </span>
               </label>
             </li>
@@ -180,32 +179,27 @@ function PickContactsInner() {
       </ul>
 
       {error ? (
-        <p className="mb-4 text-sm text-red-300" role="alert">
+        <p className="mb-4 text-sm text-red-300/95" role="alert">
           {error}
         </p>
       ) : null}
 
-      <Button
+      <button
         type="button"
-        disabled={starting || selected.size === 0}
+        disabled={starting || selected.size === 0 || loadingList}
         onClick={startCalls}
-        className="urgentic-glow-sky h-12 w-full rounded-2xl border border-cyan-400/20 bg-gradient-to-r from-sky-500 to-cyan-400 text-base font-semibold text-white hover:brightness-110 disabled:opacity-45"
+        aria-busy={starting}
+        className="urgentic-btn-primary inline-flex min-h-12 items-center justify-center gap-2.5 disabled:opacity-40"
       >
-        {starting ? "Starting…" : "Call"}
-      </Button>
+        {starting ? <CallingRing size="sm" label="Placing calls" /> : "Place calls"}
+      </button>
     </div>
   );
 }
 
 export default function PickContactsPage() {
   return (
-    <Suspense
-      fallback={
-        <div className="flex min-h-dvh items-center justify-center text-slate-500">
-          Loading…
-        </div>
-      }
-    >
+    <Suspense fallback={<div className="min-h-dvh" aria-hidden />}>
       <PickContactsInner />
     </Suspense>
   );
